@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -46,5 +47,13 @@ func main() {
 		return
 	}
 
-	fmt.Println("HTTP request successful!")
+	// Read the response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		return
+	}
+
+	fmt.Println("Response body:", string(respBody))
+	// fmt.Println()
 }

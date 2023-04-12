@@ -100,6 +100,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -113,6 +114,7 @@ import (
 
 // Artifact represents the artifact information sent from Jenkins
 type Artifact struct {
+	ID            int
 	DateTime      time.Time
 	Name          string `json:"name"`
 	Version       string `json:"version"`
@@ -127,67 +129,14 @@ type JenkinsArtifact struct {
 
 func main() {
 
-	// var jenkinsArtifact = struct {
-	// 	Name    string `json:"name"`
-	// 	Version string `json:"version"`
-	// }{
-	// 	Name:    "phoenix-testing",
-	// 	Version: "v0.0.1",
-	// }
-
-	// json, _ := json.Marshal(jenkinsArtifact)
-
-	// log.Println(string(json))
-
-	// Open a SQLite database
-	// db, err := sql.Open("sqlite3", "artifacts.db")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// artifact := Artifact{
-	// 	Name:          "phoenix_testing",
-	// 	Version:       "v0.0.2",
-	// 	TestingStatus: "Pending",
-	// 	DateTime:      time.Now(),
-	// }
-
-	// registerArtifact(db, artifact)
-
-	// db.Close()
-
 	db, err := sql.Open("sqlite3", "artifacts.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	// tableName := "artifacts"
-	// query := fmt.Sprintf(`
-	// 		CREATE TABLE IF NOT EXISTS %s (
-	// 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-	// 			dateTime DATETIME,
-	// 			name TEXT,
-	// 			version TEXT,
-	// 			testingStatus TEXT
-	// 		)
-	// 	`, tableName)
-	query := `
-			CREATE TABLE IF NOT EXISTS artifacts (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				dateTime DATETIME,
-				name TEXT,
-				version TEXT,
-				testingStatus TEXT
-			)
-		`
-	_, err = db.Exec(query)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Create tables for each artifact name
-	// createTables(db)
+	createTables(db)
 
 	// Create a new Gin-Gonic router
 	router := gin.Default()
@@ -231,6 +180,14 @@ func main() {
 		// Send a response indicating successful receipt of the artifact information
 		c.JSON(http.StatusOK, gin.H{"message": "Artifact received", "time": artifact.DateTime, "name": artifact.Name, "version": artifact.Version, "testingStatus": artifact.TestingStatus})
 	})
+
+	art, err := removeArtifacts(db)
+
+	if err != nil {
+		log.Println("Error : ", err)
+	}
+
+	log.Println("Artifact\n", art)
 
 	// Run the HTTP service
 	if err := router.Run(":8080"); err != nil {
@@ -301,32 +258,90 @@ func generateValidTableName(name string) string {
 	return re.ReplaceAllString(strings.Replace(name, " ", "_", -1), "")
 }
 
-// // createTables creates separate tables for each artifact name
-// func createTable(db *sql.DB, artifact Artifact) {
-// 	// for _, name := range []string{"artifact1", "artifact2", "artifact3"} {
-// 	query := fmt.Sprintf(`
-// 			CREATE TABLE IF NOT EXISTS %s (
-// 				id INTEGER PRIMARY KEY AUTOINCREMENT,
-// 				name TEXT,
-// 				version TEXT,
-// 				testingStatus TEXT
-// 			)
-// 		`, artifact.Name)
+// createTables creates separate tables for each artifact name
+func createTables(db *sql.DB) {
 
-// 	if _, err := db.Exec(query); err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	// }
-// }
+	artifacts := `
+CREATE TABLE IF NOT EXISTS artifacts (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	dateTime DATETIME,
+	name TEXT,
+	version TEXT,
+	testingStatus TEXT
+)
+`
+	_, err := db.Exec(artifacts)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-// func getFirstPendingArtifactQuery(tableNames []string) string {
-// 	query := "SELECT * FROM ("
-// 	for i, tableName := range tableNames {
-// 		if i > 0 {
-// 			query += " UNION ALL "
-// 		}
-// 		query += fmt.Sprintf("SELECT name, version, testingStatus FROM %s", tableName)
-// 	}
-// 	query += fmt.Sprintf(") AS all_artifacts WHERE testingStatus = 'Pending' LIMIT 1;")
-// 	return query
-// }
+	services := `
+CREATE TABLE IF NOT EXISTS services (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT,
+	version TEXT,
+	testingStatus TEXT
+)
+`
+	_, err = db.Exec(services)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
+// removeArtifacts removes the first artifact from the artifacts table
+func removeArtifacts(db *sql.DB) (Artifact, error) {
+	var artifact Artifact
+
+	// Find the first artifact
+	err := db.QueryRow(`
+		SELECT * FROM artifacts ORDER BY id LIMIT 1
+	`).Scan(
+		&artifact.ID,
+		&artifact.DateTime,
+		&artifact.Name,
+		&artifact.Version,
+		&artifact.TestingStatus,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return Artifact{}, errors.New("no artifacts found")
+		}
+		return Artifact{}, err
+	}
+
+	// Delete the artifact by ID
+	query := `
+		DELETE FROM artifacts WHERE id = ?
+	`
+
+	_, err = db.Exec(query, artifact.ID)
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	return artifact, nil
+}
+
+/*
+
+Next to do is to find the artifact and pass it to the Nomad engine
+
+Afterwards, the either fails or passes. If passes it's found and updated in the repsective table, and remove from artifacs.
+
+// Find the first artifact by version
+	err := db.QueryRow(`
+		SELECT * FROM artifacts WHERE version = ? LIMIT 1
+	`, artifactVersion).Scan(
+		&artifact.ID,
+		&artifact.Name,
+		&artifact.Description,
+		&artifact.CreatedAt,
+		&artifact.UpdatedAt,
+	)
+
+	move db and http to own structs
+
+
+*/
