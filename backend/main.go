@@ -112,6 +112,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const (
+	artefacts string = "artefacts"
+	services  string = "services"
+)
+
 // Artifact represents the artifact information sent from Jenkins
 type Artifact struct {
 	ID            int
@@ -225,22 +230,16 @@ func registerArtifact(db *sql.DB, artifact Artifact) error {
 	}
 
 	// Insert the artifact version and testing status into the table
-	query = fmt.Sprintf(`
-		INSERT INTO %s (dateTime, version, testingStatus)
-		VALUES (?, ?, ?)
-	`, tableName)
-	_, err = db.Exec(query, artifact.DateTime, artifact.Version, artifact.TestingStatus)
-	if err != nil {
-		log.Fatal(err)
-		return err
+	shouldReturn, returnValue := insertArtifact(db, artifact)
+	if shouldReturn {
+		return returnValue
 	}
 
-	artifactTableName := "artifacts"
 	// Insert the artifact version and testing status into the table
 	query = fmt.Sprintf(`
 		INSERT INTO %s (dateTime, name, version, testingStatus)
 		VALUES (?, ?, ?, ?)
-	`, artifactTableName)
+	`, artefacts)
 	_, err = db.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
 	if err != nil {
 		log.Fatal(err)
@@ -248,6 +247,19 @@ func registerArtifact(db *sql.DB, artifact Artifact) error {
 	}
 
 	return nil
+}
+
+func insertArtifact(db *sql.DB, artifact Artifact) (bool, error) {
+	query := fmt.Sprintf(`
+		INSERT INTO %s (dateTime, version, testingStatus)
+		VALUES (?, ?, ?)
+	`, artefacts)
+	_, err := db.Exec(query, artifact.DateTime, artifact.Version, artifact.TestingStatus)
+	if err != nil {
+		log.Fatal(err)
+		return true, err
+	}
+	return false, nil
 }
 
 // generateValidTableName generates a valid table name based on the given name
@@ -261,28 +273,29 @@ func generateValidTableName(name string) string {
 // createTables creates separate tables for each artifact name
 func createTables(db *sql.DB) {
 
-	artifacts := `
-CREATE TABLE IF NOT EXISTS artifacts (
+	artifacts := fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dateTime DATETIME,
 	name TEXT,
 	version TEXT,
 	testingStatus TEXT
-)
-`
+			)
+		`, artefacts)
+
 	_, err := db.Exec(artifacts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	services := `
-CREATE TABLE IF NOT EXISTS services (
+	services := fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	name TEXT,
 	version TEXT,
 	testingStatus TEXT
 )
-`
+`, services)
 	_, err = db.Exec(services)
 	if err != nil {
 		log.Fatal(err)
