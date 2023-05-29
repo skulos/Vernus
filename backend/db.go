@@ -219,24 +219,8 @@ func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion s
 	return nil
 }
 
-// getLastPassedVersions retrieves the artifact name and last_passed versions from the artifact_stats table, excluding a specific artifact
-
-func (dh DatabaseHandler) (excludedArtifact string) (DeploymentMap, error) {
-
-
-
+// GetDeploymentMap excluding a specific artifact and retrieves all of the artifact names and
+// last_passed versions from the statistics table
+func (dh DatabaseHandler) GetDeploymentMap(excludedArtifact string) (DeploymentMap, error) {
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
