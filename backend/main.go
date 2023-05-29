@@ -99,56 +99,57 @@
 package main
 
 import (
-	"database/sql"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
-	"regexp"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const (
-	artefacts string = "artefacts"
-	services  string = "services"
-)
+// // Artifact represents the artifact information sent from Jenkins
+// type Artifact struct {
+// 	ID            int
+// 	DateTime      time.Time
+// 	Name          string `json:"name"`
+// 	Version       string `json:"version"`
+// 	TestingStatus string `json:"testingStatus"`
+// 	// Add more fields as needed
+// }
 
-// Artifact represents the artifact information sent from Jenkins
-type Artifact struct {
-	ID            int
-	DateTime      time.Time
-	Name          string `json:"name"`
-	Version       string `json:"version"`
-	TestingStatus string `json:"testingStatus"`
-	// Add more fields as needed
-}
-
-type JenkinsArtifact struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
+// // JenkinsArtifact represents the information submitted by Jenkins to the system
+// type JenkinsArtifact struct {
+// 	Name    string `json:"name"`
+// 	Version string `json:"version"`
+// }
 
 func main() {
 
-	db, err := sql.Open("sqlite3", "artifacts.db")
+	db := DatabaseHandler{}
+
+	err := db.Connect()
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer db.Close()
 
+	db.CreateInitTables()
+
+	// db, err := sql.Open("sqlite3", "artifacts.db")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer db.Close()
+
 	// Create tables for each artifact name
-	createTables(db)
+	// createTables(db)
 
 	// Create a new Gin-Gonic router
 	router := gin.Default()
 
 	// Define a route for receiving artifact information from Jenkins
 	router.POST("/register", func(c *gin.Context) {
-		var jenkinsArtifact JenkinsArtifact
+		var jenkinsArtifact NewRelease
 
 		// Bind the JSON payload from Jenkins to the Artifact struct
 		if err := c.ShouldBindJSON(&jenkinsArtifact); err != nil {
@@ -169,14 +170,16 @@ func main() {
 		// }
 
 		// Register the artifact and insert version and testing status into the corresponding table
-		artifact := Artifact{
-			DateTime:      time.Now(),
-			Name:          generateValidTableName(jenkinsArtifact.Name),
-			Version:       jenkinsArtifact.Version,
-			TestingStatus: "Pending",
-		}
+		// artifact := Artifact{
+		// 	DateTime:      time.Now(),
+		// 	Name:          generateValidTableName(jenkinsArtifact.Name),
+		// 	Version:       jenkinsArtifact.Version,
+		// 	TestingStatus: "Pending",
+		// }
+		artifact := jenkinsArtifact.ConvertToReleaseArtifact()
 
-		err = registerArtifact(db, artifact)
+		// err = registerArtifact(db, artifact)
+		err = db.RegisterReleaseArtifact(artifact)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -186,13 +189,13 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "Artifact received", "time": artifact.DateTime, "name": artifact.Name, "version": artifact.Version, "testingStatus": artifact.TestingStatus})
 	})
 
-	art, err := removeArtifacts(db)
+	// art, err := removeArtifacts(db)
 
-	if err != nil {
-		log.Println("Error : ", err)
-	}
+	// if err != nil {
+	// 	log.Println("Error : ", err)
+	// }
 
-	log.Println("Artifact\n", art)
+	// log.Println("Artifact\n", art)
 
 	// Run the HTTP service
 	if err := router.Run(":8080"); err != nil {
@@ -200,142 +203,151 @@ func main() {
 	}
 }
 
-// registerArtifact registers a new artifact,
-func registerArtifact(db *sql.DB, artifact Artifact) error {
-	// Check if the artifact table exists
-	tableName := artifact.Name
-	query := fmt.Sprintf("SELECT name FROM sqlite_master WHERE type='table' AND name='%s'", tableName)
-	var name string
-	err := db.QueryRow(query).Scan(&name)
-	if err != nil && err != sql.ErrNoRows {
-		log.Println(err)
-		return err
-	}
+// // registerArtifact registers a new artifact,
+// func registerArtifact(db *sql.DB, artifact Artifact) error {
+// 	// Check if the artifact table exists
+// 	tableName := artifact.Name
+// 	query := fmt.Sprintf("SELECT name FROM sqlite_master WHERE type='table' AND name='%s'", tableName)
+// 	var name string
+// 	err := db.QueryRow(query).Scan(&name)
+// 	if err != nil && err != sql.ErrNoRows {
+// 		log.Println(err)
+// 		return err
+// 	}
 
-	// If the table does not exist, create it
-	if err == sql.ErrNoRows {
-		query := fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				dateTime DATETIME,
-				version TEXT,
-				testingStatus TEXT
-			)
-		`, tableName)
-		_, err = db.Exec(query)
-		if err != nil {
-			log.Fatal(err)
-			return err
-		}
-	}
+// 	// If the table does not exist, create it
+// 	if err == sql.ErrNoRows {
+// 		query := fmt.Sprintf(`
+// 			CREATE TABLE IF NOT EXISTS %s (
+// 				id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 				dateTime DATETIME,
+// 				version TEXT,
+// 				testingStatus TEXT
+// 			)
+// 		`, tableName)
+// 		_, err = db.Exec(query)
+// 		if err != nil {
+// 			log.Fatal(err)
+// 			return err
+// 		}
+// 	}
 
-	// Insert the artifact version and testing status into the table
-	shouldReturn, returnValue := insertArtifact(db, artifact)
-	if shouldReturn {
-		return returnValue
-	}
+// 	// Insert the artifact version and testing status into the table
+// 	shouldReturn, returnValue := insertArtifact(db, tableName, artifact)
+// 	if shouldReturn {
+// 		return returnValue
+// 	}
 
-	// Insert the artifact version and testing status into the table
-	query = fmt.Sprintf(`
-		INSERT INTO %s (dateTime, name, version, testingStatus)
-		VALUES (?, ?, ?, ?)
-	`, artefacts)
-	_, err = db.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
+// 	// Insert the artifact version and testing status into the table
+// 	query = fmt.Sprintf(`
+// 		INSERT INTO %s (dateTime, name, version, testingStatus)
+// 		VALUES (?, ?, ?, ?)
+// 	`, artefacts)
+// 	_, err = db.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		return err
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
-func insertArtifact(db *sql.DB, artifact Artifact) (bool, error) {
-	query := fmt.Sprintf(`
-		INSERT INTO %s (dateTime, version, testingStatus)
-		VALUES (?, ?, ?)
-	`, artefacts)
-	_, err := db.Exec(query, artifact.DateTime, artifact.Version, artifact.TestingStatus)
-	if err != nil {
-		log.Fatal(err)
-		return true, err
-	}
-	return false, nil
-}
+// func insertArtifact(db *sql.DB, tableName string, artifact Artifact) (bool, error) {
+// 	query := fmt.Sprintf(`
+// 		INSERT INTO %s (dateTime, version, testingStatus)
+// 		VALUES (?, ?, ?)
+// 	`, tableName)
+// 	_, err := db.Exec(query, artifact.DateTime, artifact.Version, artifact.TestingStatus)
+
+// 	// query = fmt.Sprintf(`
+// 	// 	INSERT INTO %s (dateTime, name, version, testingStatus)
+// 	// 	VALUES (?, ?, ?, ?)
+// 	// `, artefacts)
+// 	// _, err = db.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
+
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		return true, err
+// 	}
+// 	return false, nil
+// }
 
 // generateValidTableName generates a valid table name based on the given name
-func generateValidTableName(name string) string {
-	// Remove any non-letter, non-number, and non-underscore characters
-	// Replace spaces with underscores
-	re := regexp.MustCompile(`[^a-zA-Z0-9_]+`)
-	return re.ReplaceAllString(strings.Replace(name, " ", "_", -1), "")
-}
+// func generateValidTableName(name string) string {
+// 	// Remove any non-letter, non-number, and non-underscore characters
+// 	// Replace spaces with underscores
+// 	// re := regexp.MustCompile(`[^a-zA-Z0-9_]+`)
+// 	// return re.ReplaceAllString(strings.Replace(name, " ", "_", -1), "")
+// 	return strings.Replace(name, "-", "_", -1)
+// }
 
 // createTables creates separate tables for each artifact name
-func createTables(db *sql.DB) {
+// func createTables(db *sql.DB) {
 
-	artifacts := fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	dateTime DATETIME,
-	name TEXT,
-	version TEXT,
-	testingStatus TEXT
-			)
-		`, artefacts)
+// 	artifacts := fmt.Sprintf(`
+// CREATE TABLE IF NOT EXISTS %s (
+// 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 	dateTime DATETIME,
+// 	name TEXT,
+// 	version TEXT,
+// 	testingStatus TEXT
+// 			)
+// 		`, artefacts)
 
-	_, err := db.Exec(artifacts)
-	if err != nil {
-		log.Fatal(err)
-	}
+// 	_, err := db.Exec(artifacts)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-	services := fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT,
-	version TEXT,
-	testingStatus TEXT
-)
-`, services)
-	_, err = db.Exec(services)
-	if err != nil {
-		log.Fatal(err)
-	}
+// 	services := fmt.Sprintf(`
+// CREATE TABLE IF NOT EXISTS %s (
+// 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 	dateTime DATETIME,
+// 	name TEXT,
+// 	version TEXT,
+// 	testingStatus TEXT
+// )
+// `, services)
+// 	_, err = db.Exec(services)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-}
+// }
 
 // removeArtifacts removes the first artifact from the artifacts table
-func removeArtifacts(db *sql.DB) (Artifact, error) {
-	var artifact Artifact
+// func removeArtifacts(db *sql.DB) (Artifact, error) {
+// 	var artifact Artifact
 
-	// Find the first artifact
-	err := db.QueryRow(`
-		SELECT * FROM artifacts ORDER BY id LIMIT 1
-	`).Scan(
-		&artifact.ID,
-		&artifact.DateTime,
-		&artifact.Name,
-		&artifact.Version,
-		&artifact.TestingStatus,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return Artifact{}, errors.New("no artifacts found")
-		}
-		return Artifact{}, err
-	}
+// 	// Find the first artifact
+// 	err := db.QueryRow(`
+// 		SELECT * FROM artifacts ORDER BY id LIMIT 1
+// 	`).Scan(
+// 		&artifact.ID,
+// 		&artifact.DateTime,
+// 		&artifact.Name,
+// 		&artifact.Version,
+// 		&artifact.TestingStatus,
+// 	)
+// 	if err != nil {
+// 		if err == sql.ErrNoRows {
+// 			return Artifact{}, errors.New("no artifacts found")
+// 		}
+// 		return Artifact{}, err
+// 	}
 
-	// Delete the artifact by ID
-	query := `
-		DELETE FROM artifacts WHERE id = ?
-	`
+// 	// Delete the artifact by ID
+// 	query := `
+// 		DELETE FROM artifacts WHERE id = ?
+// 	`
 
-	_, err = db.Exec(query, artifact.ID)
-	if err != nil {
-		return Artifact{}, err
-	}
+// 	_, err = db.Exec(query, artifact.ID)
+// 	if err != nil {
+// 		return Artifact{}, err
+// 	}
 
-	return artifact, nil
-}
+// 	return artifact, nil
+// }
 
 /*
 
