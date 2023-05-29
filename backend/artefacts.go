@@ -2,11 +2,6 @@ package main
 
 import "time"
 
-const (
-	artefacts string = "artefacts"
-	services  string = "services"
-)
-
 // ReleaseArtifact represents the artifact information currently in the system
 type ReleaseArtifact struct {
 	ID            int

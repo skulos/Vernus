@@ -5,10 +5,19 @@ import (
 	"path"
 )
 
+// DeploymentVersion represents an artifact name and its last_passed version from
+// the statistics table
+type DeploymentVersion struct {
+	Name              string
+	LastPassedVersion string
+}
+
+type DeploymentMap = map[string]string
+
 type NomadEngine struct {
 	DirectoryPath string
 	Address       string //includes IP:Port and http(s)
-	DeploymentMap map[string]bool
+	// DeploymentMap map[string]bool
 }
 
 func (ne NomadEngine) Launch(name, version string) error {
@@ -21,13 +30,13 @@ func (ne NomadEngine) Launch(name, version string) error {
 	return err
 }
 
-func (ne NomadEngine) Destroy(name string) error {
+// func (ne NomadEngine) Destroy(name string) error {
 
-}
+// }
 
-func (ne NomadEngine) Revert(name, verison string) error {
+// func (ne NomadEngine) Revert(name, verison string) error {
 
-}
+// }
 
 func (ne NomadEngine) generateDeploymentMap() {}
 

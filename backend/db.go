@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+const (
+	artefacts  string = "artefacts"
+	services   string = "services"
+	statistics string = "statistics"
+)
+
 type DatabaseHandler struct {
 	db *sql.DB
 }
@@ -29,7 +35,7 @@ func (dh DatabaseHandler) Close() error {
 
 func (dh DatabaseHandler) CreateInitTables() {
 
-	artifacts := fmt.Sprintf(`
+	artifactsTable := fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dateTime DATETIME,
@@ -39,12 +45,12 @@ CREATE TABLE IF NOT EXISTS %s (
 			)
 		`, artefacts)
 
-	_, err := dh.db.Exec(artifacts)
+	_, err := dh.db.Exec(artifactsTable)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	services := fmt.Sprintf(`
+	servicesTable := fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dateTime DATETIME,
@@ -53,12 +59,25 @@ CREATE TABLE IF NOT EXISTS %s (
 	testingStatus TEXT
 )
 `, services)
-	_, err = dh.db.Exec(services)
+	_, err = dh.db.Exec(servicesTable)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// TODO: stats table
+	statisticsTable := fmt.Sprintf(`
+	CREATE TABLE IF NOT EXISTS %s (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		artifact_name TEXT UNIQUE,
+		current_version TEXT,
+		last_passed_version TEXT,
+		last_failed_version TEXT
+	)
+`, statistics)
+
+	_, err = dh.db.Exec(statisticsTable)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
 
@@ -118,8 +137,7 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) erro
 	return nil
 }
 
-// func (dh DatabaseHandler) InsertReleaseArtifact() {}
-
+// RemoveReleaseArtifact removes a release that has been tested form the waiting queue
 func (dh DatabaseHandler) RemoveReleaseArtifact() (ReleaseArtifact, error) {
 	var artifact ReleaseArtifact
 
@@ -152,3 +170,73 @@ func (dh DatabaseHandler) RemoveReleaseArtifact() (ReleaseArtifact, error) {
 
 	return artifact, nil
 }
+
+// UpdateCurrentVersion updates the current version of a specific artifact in the statistics table
+// If the artifact entry doesn't exist, it inserts a new entry with the provided version
+func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion string) error {
+
+	// Check if the artifact entry exists
+	existenceQuery := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM %s
+		WHERE artifact_name = ?
+	`, statistics)
+
+	var count int
+	err := dh.db.QueryRow(existenceQuery, artifactName).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+
+		// Artifact entry doesn't exist, insert a new entry
+		existenceQuery = `
+			INSERT INTO artifact_stats (artifact_name, current_version, last_passed, last_failed)
+			VALUES (?, ?, NULL, NULL)
+		`
+		_, err = dh.db.Exec(existenceQuery, artifactName, newVersion)
+		if err != nil {
+			return err
+		}
+
+	} else {
+
+		// Artifact entry exists, update the current version
+		updateQuery := fmt.Sprintf(`
+		UPDATE %s
+		SET current_version = ?
+		WHERE artifact_name = ?
+	`, statistics)
+
+		_, err := dh.db.Exec(updateQuery, newVersion, artifactName)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return nil
+}
+
+// getLastPassedVersions retrieves the artifact name and last_passed versions from the artifact_stats table, excluding a specific artifact
+
+func (dh DatabaseHandler) (excludedArtifact string) (DeploymentMap, error) {
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
