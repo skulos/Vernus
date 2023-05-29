@@ -1,8 +1,11 @@
 package main
 
 import (
+	"log"
 	"os/exec"
 	"path"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // DeploymentVersion represents an artifact name and its last_passed version from
@@ -20,14 +23,50 @@ type NomadEngine struct {
 	// DeploymentMap map[string]bool
 }
 
-func (ne NomadEngine) Launch(name, version string) error {
-	jobFileName := path.Join(ne.DirectoryPath, name+".hcl")
-	// exec.Command("nomad", "job" ,"run" ,"-address" ,"http://10.250.101.4:4646",jobFileName)
-	jobVersion := "version=" + version
-	job := exec.Command("nomad", "job", "run", "-address", ne.Address, "-var", jobVersion, jobFileName)
-	err := job.Run()
+func (ne NomadEngine) LaunchTest(name, version string, dmap DeploymentMap) error {
 
-	return err
+	// var wg sync.WaitGroup
+	var wg errgroup.Group
+
+	// wg.Add(1)
+
+	wg.Go(func() error {
+		// defer wg.Done()
+		return ne.lunch(name, version)
+
+	})
+
+	for n, v := range dmap {
+
+		// wg.Add(1)
+
+		// go func() {
+		// 	defer wg.Done()
+		// 	ne.lunch(n, v)
+		// }()
+
+		// wg.Go(func() error {
+		// 	// defer wg.Done()
+		// 	err := ne.lunch(n, v)
+		// 	return err
+		// })
+
+		f := func() error {
+			err := ne.lunch(n, v)
+			return err
+		}
+
+		wg.Go(f)
+
+	}
+
+	// wg.Wait()
+	if err := wg.Wait(); err != nil {
+		log.Println(err)
+		return err
+	} else {
+		return nil
+	}
 }
 
 // func (ne NomadEngine) Destroy(name string) error {
@@ -38,7 +77,15 @@ func (ne NomadEngine) Launch(name, version string) error {
 
 // }
 
-func (ne NomadEngine) generateDeploymentMap() {}
+func (ne NomadEngine) lunch(name, version string) error {
+
+	jobFileName := path.Join(ne.DirectoryPath, name+".hcl")
+	jobVersion := "version=" + version
+	job := exec.Command("nomad", "job", "run", "-address", ne.Address, "-var", jobVersion, jobFileName)
+	err := job.Run()
+
+	return err
+}
 
 func (ne NomadEngine) reconfigure() {}
 

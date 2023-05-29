@@ -219,8 +219,72 @@ func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion s
 	return nil
 }
 
+// UpdateLastPassedVersion updates the last passed version version of a specific artifact in the statistics table
+func (dh DatabaseHandler) UpdateLastPassedVersion(artifactName string, lastPassedVersion string) error {
+
+	// Artifact entry exists, update the last passed version
+	updateQuery := fmt.Sprintf(`
+		UPDATE %s
+		SET last_passed_version = ?
+		WHERE artifact_name = ?
+	`, statistics)
+
+	_, err := dh.db.Exec(updateQuery, lastPassedVersion, artifactName)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdateLastFailedVersion updates the last failed version of a specific artifact in the statistics table
+func (dh DatabaseHandler) UpdateLastFailedVersion(artifactName string, lastFailedVersion string) error {
+
+	// Artifact entry exists, update the last failed version
+	updateQuery := fmt.Sprintf(`
+		UPDATE %s
+		SET last_failed_version = ?
+		WHERE artifact_name = ?
+	`, statistics)
+
+	_, err := dh.db.Exec(updateQuery, lastFailedVersion, artifactName)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetDeploymentMap excluding a specific artifact and retrieves all of the artifact names and
 // last_passed versions from the statistics table
 func (dh DatabaseHandler) GetDeploymentMap(excludedArtifact string) (DeploymentMap, error) {
+	query := fmt.Sprintf(`
+	SELECT artifact_name, last_passed
+	FROM %s
+	WHERE artifact_name != ?
+`, statistics)
 
+	rows, err := dh.db.Query(query, excludedArtifact)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dmap := make(DeploymentMap)
+
+	for rows.Next() {
+		var artifactName, lastPassedVersion string
+		if err := rows.Scan(&artifactName, &lastPassedVersion); err != nil {
+			return nil, err
+		}
+
+		dmap[artifactName] = lastPassedVersion
+
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return dmap, nil
 }

@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/gin-gonic/gin v1.9.0
 	github.com/mattn/go-sqlite3 v1.14.16
+	golang.org/x/sync v0.2.0
 )
 
 require (
