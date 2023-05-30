@@ -58,3 +58,35 @@
 //		// fmt.Println()
 //	}
 package client
+
+import (
+	"Vernus/artefacts"
+	"bytes"
+	"encoding/json"
+	"log"
+	"net/http"
+)
+
+func SendNewRelease(endpointURL string, release artefacts.ReleaseArtifact) error {
+	// Convert release data to JSON
+	jsonData, err := json.Marshal(release)
+	if err != nil {
+		return err
+	}
+
+	// Send POST request to the endpoint
+	resp, err := http.Post(endpointURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check the response status code
+	if resp.StatusCode != http.StatusOK {
+		return err // Or handle the error based on the desired behavior
+	}
+
+	// Request successful
+	log.Println("New release sent successfully!")
+	return nil
+}
