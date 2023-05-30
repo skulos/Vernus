@@ -2,7 +2,6 @@ package database
 
 import (
 	"Vernus/artefacts"
-	"Vernus/client"
 	"Vernus/nomad"
 	"database/sql"
 	"errors"
@@ -126,28 +125,31 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artifact artefacts.ReleaseArti
 		INSERT INTO %s (dateTime, name, version, testingStatus)
 		VALUES (?, ?, ?, ?)
 	`, artefact)
-	result, err := dh.Connection.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
 
-	finalRelease := artifact
-	id, err := result.LastInsertId()
+	// result, err := dh.Connection.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
+	_, err = dh.Connection.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
 
 	if err != nil {
 		log.Fatal(err)
 		return err
 	}
 
-	finalRelease.ID = int(id)
+	// finalRelease := artifact
+	// id, err := result.LastInsertId()
 
-	err = client.SendNewRelease("http://localhost:9090", finalRelease)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// 	return err
+	// }
 
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
+	// finalRelease.ID = int(id)
+
+	// err = client.SendNewRelease("http://localhost:9090", finalRelease)
+
+	// if err != nil {
+	// 	log.Fatal(err)
+	// 	return err
+	// }
 
 	return nil
 }

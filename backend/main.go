@@ -208,14 +208,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "Artifact received", "time": artifact.DateTime, "name": artifact.Name, "version": artifact.Version, "testingStatus": artifact.TestingStatus})
 	})
 
-	// art, err := removeArtifacts(db)
-
-	// if err != nil {
-	// 	log.Println("Error : ", err)
-	// }
-
-	// log.Println("Artifact\n", art)
-
 	router.POST("/deploy", func(c *gin.Context) {
 
 		var request artefacts.NewRelease
@@ -254,6 +246,10 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Success"})
+
+	})
+
+	router.GET("/releases", func(c *gin.Context) {
 
 	})
 
