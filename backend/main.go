@@ -99,6 +99,10 @@
 package main
 
 import (
+	"Vernus/artefacts"
+	database "Vernus/db"
+	"Vernus/nomad"
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -124,16 +128,25 @@ import (
 
 func main() {
 
-	db := DatabaseHandler{}
+	dbConnection, err := sql.Open("sqlite3", "artifacts.db")
 
-	err := db.Connect()
+	// err := db.Connect()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	db := database.DatabaseHandler{
+		Connection: dbConnection,
 	}
 
 	defer db.Close()
 
 	db.CreateInitTables()
+
+	ne := nomad.NomadEngine{
+		DirectoryPath: "jobs/",
+		Address:       "http://10.250.101.4:4646",
+	}
 
 	// db, err := sql.Open("sqlite3", "artifacts.db")
 	// if err != nil {
@@ -149,7 +162,7 @@ func main() {
 
 	// Define a route for receiving artifact information from Jenkins
 	router.POST("/register", func(c *gin.Context) {
-		var jenkinsArtifact NewRelease
+		var jenkinsArtifact artefacts.NewRelease
 
 		// Bind the JSON payload from Jenkins to the Artifact struct
 		if err := c.ShouldBindJSON(&jenkinsArtifact); err != nil {
@@ -185,6 +198,12 @@ func main() {
 			return
 		}
 
+		err = db.UpdateCurrentVersion(jenkinsArtifact.Name, jenkinsArtifact.Version)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		// Send a response indicating successful receipt of the artifact information
 		c.JSON(http.StatusOK, gin.H{"message": "Artifact received", "time": artifact.DateTime, "name": artifact.Name, "version": artifact.Version, "testingStatus": artifact.TestingStatus})
 	})
@@ -196,6 +215,47 @@ func main() {
 	// }
 
 	// log.Println("Artifact\n", art)
+
+	router.POST("/deploy", func(c *gin.Context) {
+
+		var request artefacts.NewRelease
+
+		// Bind the JSON payload from Jenkins to the Artifact struct
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			log.Println("error for request: ", err)
+			return
+		}
+
+		deploymentMap, err := db.GetDeploymentMap(request.Name)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		err = ne.LaunchTest(request.Name, request.Version, deploymentMap)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Success", "name": request.Name, "version": request.Version})
+
+	})
+
+	router.POST("/destroy", func(c *gin.Context) {
+
+		err := ne.DestroyTest()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Success"})
+
+	})
 
 	// Run the HTTP service
 	if err := router.Run(":8080"); err != nil {

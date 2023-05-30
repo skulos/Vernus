@@ -1,35 +1,32 @@
-package main
+package database
 
 import (
+	"Vernus/artefacts"
+	"Vernus/nomad"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 )
 
 const (
-	artefacts  string = "artefacts"
+	artefact   string = "artefacts"
 	services   string = "services"
 	statistics string = "statistics"
 )
 
 type DatabaseHandler struct {
-	db *sql.DB
+	Connection *sql.DB
 }
 
-func GenerateValidTableName(name string) string {
-	return strings.Replace(name, "-", "_", -1)
-}
-
-func (dh DatabaseHandler) Connect() error {
-	var err error
-	dh.db, err = sql.Open("sqlite3", "artifacts.db")
-	return err
-}
+// func (dh DatabaseHandler) Connect() error {
+// 	var err error
+// 	dh.Connection, err = sql.Open("sqlite3", "artifacts.db")
+// 	return err
+// }
 
 func (dh DatabaseHandler) Close() error {
-	err := dh.db.Close()
+	err := dh.Connection.Close()
 	return err
 }
 
@@ -43,9 +40,9 @@ CREATE TABLE IF NOT EXISTS %s (
 	version TEXT,
 	testingStatus TEXT
 			)
-		`, artefacts)
+		`, artefact)
 
-	_, err := dh.db.Exec(artifactsTable)
+	_, err := dh.Connection.Exec(artifactsTable)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +56,7 @@ CREATE TABLE IF NOT EXISTS %s (
 	testingStatus TEXT
 )
 `, services)
-	_, err = dh.db.Exec(servicesTable)
+	_, err = dh.Connection.Exec(servicesTable)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,7 +71,7 @@ CREATE TABLE IF NOT EXISTS %s (
 	)
 `, statistics)
 
-	_, err = dh.db.Exec(statisticsTable)
+	_, err = dh.Connection.Exec(statisticsTable)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,13 +79,13 @@ CREATE TABLE IF NOT EXISTS %s (
 }
 
 // RegisterReleaseArtifact registers a new release artifact
-func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) error {
+func (dh DatabaseHandler) RegisterReleaseArtifact(artifact artefacts.ReleaseArtifact) error {
 
 	// Check if the artifact table exists
-	tableName := artefact.Name
+	tableName := artifact.Name
 	query := fmt.Sprintf("SELECT name FROM sqlite_master WHERE type='table' AND name='%s'", tableName)
 	var name string
-	err := dh.db.QueryRow(query).Scan(&name)
+	err := dh.Connection.QueryRow(query).Scan(&name)
 	if err != nil && err != sql.ErrNoRows {
 		log.Println(err)
 		return err
@@ -104,7 +101,7 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) erro
 				testingStatus TEXT
 			)
 		`, tableName)
-		_, err = dh.db.Exec(query)
+		_, err = dh.Connection.Exec(query)
 		if err != nil {
 			log.Fatal(err)
 			return err
@@ -116,7 +113,7 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) erro
 		INSERT INTO %s (dateTime, version, testingStatus)
 		VALUES (?, ?, ?)
 	`, tableName)
-	_, err = dh.db.Exec(query, artefact.DateTime, artefact.Version, artefact.TestingStatus)
+	_, err = dh.Connection.Exec(query, artifact.DateTime, artifact.Version, artifact.TestingStatus)
 
 	if err != nil {
 		log.Fatal(err)
@@ -127,8 +124,8 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) erro
 	query = fmt.Sprintf(`
 		INSERT INTO %s (dateTime, name, version, testingStatus)
 		VALUES (?, ?, ?, ?)
-	`, artefacts)
-	_, err = dh.db.Exec(query, artefact.DateTime, artefact.Name, artefact.Version, artefact.TestingStatus)
+	`, artefact)
+	_, err = dh.Connection.Exec(query, artifact.DateTime, artifact.Name, artifact.Version, artifact.TestingStatus)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -138,11 +135,11 @@ func (dh DatabaseHandler) RegisterReleaseArtifact(artefact ReleaseArtifact) erro
 }
 
 // RemoveReleaseArtifact removes a release that has been tested form the waiting queue
-func (dh DatabaseHandler) RemoveReleaseArtifact() (ReleaseArtifact, error) {
-	var artifact ReleaseArtifact
+func (dh DatabaseHandler) RemoveReleaseArtifact() (artefacts.ReleaseArtifact, error) {
+	var artifact artefacts.ReleaseArtifact
 
 	// Find the first artifact
-	err := dh.db.QueryRow(`
+	err := dh.Connection.QueryRow(`
 		SELECT * FROM artifacts ORDER BY id LIMIT 1
 	`).Scan(
 		&artifact.ID,
@@ -153,9 +150,9 @@ func (dh DatabaseHandler) RemoveReleaseArtifact() (ReleaseArtifact, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return ReleaseArtifact{}, errors.New("no artifacts found")
+			return artefacts.ReleaseArtifact{}, errors.New("no artifacts found")
 		}
-		return ReleaseArtifact{}, err
+		return artefacts.ReleaseArtifact{}, err
 	}
 
 	// Delete the artifact by ID
@@ -163,9 +160,9 @@ func (dh DatabaseHandler) RemoveReleaseArtifact() (ReleaseArtifact, error) {
 		DELETE FROM artifacts WHERE id = ?
 	`
 
-	_, err = dh.db.Exec(query, artifact.ID)
+	_, err = dh.Connection.Exec(query, artifact.ID)
 	if err != nil {
-		return ReleaseArtifact{}, err
+		return artefacts.ReleaseArtifact{}, err
 	}
 
 	return artifact, nil
@@ -183,7 +180,7 @@ func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion s
 	`, statistics)
 
 	var count int
-	err := dh.db.QueryRow(existenceQuery, artifactName).Scan(&count)
+	err := dh.Connection.QueryRow(existenceQuery, artifactName).Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -192,10 +189,10 @@ func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion s
 
 		// Artifact entry doesn't exist, insert a new entry
 		existenceQuery = `
-			INSERT INTO artifact_stats (artifact_name, current_version, last_passed, last_failed)
-			VALUES (?, ?, NULL, NULL)
+			INSERT INTO statistics (artifact_name, current_version, last_passed_version, last_failed_version)
+			VALUES (?, ?, ?, ?)
 		`
-		_, err = dh.db.Exec(existenceQuery, artifactName, newVersion)
+		_, err = dh.Connection.Exec(existenceQuery, artifactName, newVersion, newVersion, newVersion)
 		if err != nil {
 			return err
 		}
@@ -209,7 +206,7 @@ func (dh DatabaseHandler) UpdateCurrentVersion(artifactName string, newVersion s
 		WHERE artifact_name = ?
 	`, statistics)
 
-		_, err := dh.db.Exec(updateQuery, newVersion, artifactName)
+		_, err := dh.Connection.Exec(updateQuery, newVersion, artifactName)
 		if err != nil {
 			return err
 		}
@@ -229,7 +226,7 @@ func (dh DatabaseHandler) UpdateLastPassedVersion(artifactName string, lastPasse
 		WHERE artifact_name = ?
 	`, statistics)
 
-	_, err := dh.db.Exec(updateQuery, lastPassedVersion, artifactName)
+	_, err := dh.Connection.Exec(updateQuery, lastPassedVersion, artifactName)
 	if err != nil {
 		return err
 	}
@@ -247,7 +244,7 @@ func (dh DatabaseHandler) UpdateLastFailedVersion(artifactName string, lastFaile
 		WHERE artifact_name = ?
 	`, statistics)
 
-	_, err := dh.db.Exec(updateQuery, lastFailedVersion, artifactName)
+	_, err := dh.Connection.Exec(updateQuery, lastFailedVersion, artifactName)
 	if err != nil {
 		return err
 	}
@@ -257,20 +254,21 @@ func (dh DatabaseHandler) UpdateLastFailedVersion(artifactName string, lastFaile
 
 // GetDeploymentMap excluding a specific artifact and retrieves all of the artifact names and
 // last_passed versions from the statistics table
-func (dh DatabaseHandler) GetDeploymentMap(excludedArtifact string) (DeploymentMap, error) {
+func (dh DatabaseHandler) GetDeploymentMap(excludedArtifact string) (nomad.DeploymentMap, error) {
+
 	query := fmt.Sprintf(`
-	SELECT artifact_name, last_passed
+	SELECT artifact_name, last_passed_version
 	FROM %s
 	WHERE artifact_name != ?
 `, statistics)
 
-	rows, err := dh.db.Query(query, excludedArtifact)
+	rows, err := dh.Connection.Query(query, excludedArtifact)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	dmap := make(DeploymentMap)
+	dmap := make(nomad.DeploymentMap)
 
 	for rows.Next() {
 		var artifactName, lastPassedVersion string

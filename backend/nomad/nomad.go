@@ -1,9 +1,12 @@
-package main
+package nomad
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -69,9 +72,48 @@ func (ne NomadEngine) LaunchTest(name, version string, dmap DeploymentMap) error
 	}
 }
 
-// func (ne NomadEngine) Destroy(name string) error {
+func (ne NomadEngine) DestroyTest() error {
 
-// }
+	fileNames, err := ne.readFileNamesInDirectory()
+
+	if err != nil {
+		return err
+	}
+
+	for _, n := range fileNames {
+		err := ne.destroy(n)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+	// var wg errgroup.Group
+
+	// for i := 0; i < len(fileNames); i++ {
+
+	// 	fmt.Println(i, ":", fileNames[i])
+
+	// 	f := func() error {
+	// 		err := ne.destroy(fileNames[i])
+	// 		return err
+	// 	}
+
+	// 	wg.Go(f)
+
+	// }
+
+	// waitingError := wg.Wait()
+
+	// if waitingError != nil {
+	// 	log.Println(waitingError)
+	// 	return waitingError
+	// } else {
+	// 	return nil
+	// }
+}
 
 // func (ne NomadEngine) Revert(name, verison string) error {
 
@@ -87,9 +129,46 @@ func (ne NomadEngine) lunch(name, version string) error {
 	return err
 }
 
-func (ne NomadEngine) reconfigure() {}
+func (ne NomadEngine) destroy(name string) error {
 
-func (ne NomadEngine) configure() {}
+	job := exec.Command("nomad", "job", "stop", "-purge", "-address", ne.Address, "-namespace", "echo", name)
+	err := job.Run()
+
+	fmt.Println("Destroy err, ", name)
+
+	return err
+}
+
+// ReadFileNamesInDirectory reads only the names of files in a directory and strips ".hcl" from the names
+func (ne NomadEngine) readFileNamesInDirectory() ([]string, error) {
+	fileNames := []string{}
+
+	// Read the directory entries
+	entries, err := os.ReadDir(ne.DirectoryPath)
+	if err != nil {
+		return fileNames, fmt.Errorf("failed to read directory: %v", err)
+	}
+
+	// Iterate over the directory entries
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Skip directories
+			continue
+		}
+
+		// Get the file name without the extension
+		fileName := strings.TrimSuffix(entry.Name(), ".hcl")
+
+		// Append the file name to the fileNames slice
+		fileNames = append(fileNames, fileName)
+	}
+
+	return fileNames, nil
+}
+
+// func (ne NomadEngine) reconfigure() {}
+
+// func (ne NomadEngine) configure() {}
 
 // TODO uses stats table to do these
 

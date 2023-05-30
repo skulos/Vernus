@@ -1,6 +1,11 @@
-package main
+package artefacts
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+type VersionMatrix = map[string]string
 
 // ReleaseArtifact represents the artifact information currently in the system
 type ReleaseArtifact struct {
@@ -18,10 +23,14 @@ type NewRelease struct {
 	Version string `json:"version"`
 }
 
+func generateValidTableName(name string) string {
+	return strings.Replace(name, "-", "_", -1)
+}
+
 func (nr NewRelease) ConvertToReleaseArtifact() ReleaseArtifact {
 	return ReleaseArtifact{
 		DateTime:      time.Now(),
-		Name:          GenerateValidTableName(nr.Name),
+		Name:          generateValidTableName(nr.Name),
 		Version:       nr.Version,
 		TestingStatus: "Pending",
 	}
